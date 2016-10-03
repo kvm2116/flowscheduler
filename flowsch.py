@@ -38,6 +38,7 @@ result = os.popen(command).read()
 switches = json.loads(result)
 print "Number of switches connected = %d" % len(switches) 
 port_stat = {}
+flow_stat = {}
 
 # Get all the static flows for the switch:
 # for i in range(len(switches)):
@@ -68,25 +69,21 @@ port_stat = {}
 # result = os.popen(command).read()
 # print result
 
-def parse_flows(flows):
-	print flows
+def parse_flows(flows, dpid):
 	parsedResult = json.loads(flows)
 	flow_stat = parsedResult['flows']
 	for item in flow_stat:
-		match = item['match']
-		actions = item['instructions']['instruction_apply_actions']['actions']
-		print type(actions)
+		if item['table_id'] == 200:
+			match = item['match']
+			actions = item['instructions']['instruction_apply_actions']['actions']
 	
-def parse_ports(ports):
+def parse_ports(ports, dpid):
 	parsedResult = json.loads(ports)
-	port_stat = parsedResult['port_reply'][0]['port']
-	for item in port_stat:
-		port_number = item['port_number']
-		rx_packets = item['receive_packets']
-		rx_bytes = item['receive_bytes']
-		tx_packets = item['transmit_packets']
-		tx_bytes = item['transmit_bytes']
-		print port_number
+	stats = parsedResult['port_reply'][0]['port']
+	port_stat[dpid] = {}
+	for item in stats:
+		port_stat[dpid][item['port_number']] = {'rx_packets' : item['receive_packets'], 'rx_bytes' : item['receive_bytes'], 'tx_packets' : item['transmit_packets'], 'tx_bytes' : item['transmit_bytes']}
+	print port_stat
 
 def rest_call(command):
 	return os.popen(command).read()
@@ -100,6 +97,6 @@ while True:
 		port_command = "curl -s http://%s/wm/core/switch/%s/port/json" % (controllerRestIP, switches[i]['switchDPID']) 
 		ports = rest_call(port_command)
 		# print "Switch %s" % switches[i]['switchDPID']
-		parse_flows(flows)
-		parse_ports(ports)
+		parse_flows(flows, switches[i]['switchDPID'])
+		parse_ports(ports, switches[i]['switchDPID'])
 	print("--- %s seconds ---" % (time.time() - start_time))
