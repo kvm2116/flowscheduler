@@ -37,8 +37,8 @@ command = "curl -s http://%s/wm/core/controller/switches/json" % (controllerRest
 result = os.popen(command).read()
 switches = json.loads(result)
 print "Number of switches connected = %d" % len(switches) 
-port_stat = {}
-flow_stat = {}
+port_stats = {}
+flow_stats = {}
 
 # Get all the static flows for the switch:
 # for i in range(len(switches)):
@@ -71,19 +71,18 @@ flow_stat = {}
 
 def parse_flows(flows, dpid):
 	parsedResult = json.loads(flows)
-	flow_stat = parsedResult['flows']
-	for item in flow_stat:
+	flow_stats = parsedResult['flows']
+	for item in flow_stats:
 		if item['table_id'] == 200:
 			match = item['match']
 			actions = item['instructions']['instruction_apply_actions']['actions']
-	
+
 def parse_ports(ports, dpid):
 	parsedResult = json.loads(ports)
 	stats = parsedResult['port_reply'][0]['port']
-	port_stat[dpid] = {}
+	port_stats[dpid] = {}
 	for item in stats:
-		port_stat[dpid][item['port_number']] = {'rx_packets' : item['receive_packets'], 'rx_bytes' : item['receive_bytes'], 'tx_packets' : item['transmit_packets'], 'tx_bytes' : item['transmit_bytes']}
-	print port_stat
+		port_stats[dpid][item['port_number']] = {'rx_packets' : item['receive_packets'], 'rx_bytes' : item['receive_bytes'], 'tx_packets' : item['transmit_packets'], 'tx_bytes' : item['transmit_bytes']}
 
 def rest_call(command):
 	return os.popen(command).read()
