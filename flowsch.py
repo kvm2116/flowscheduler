@@ -32,30 +32,12 @@ args = parser.parse_args()
 controllerRestIP = args.controllerRestIP # the ip address along with the port number
 print "Controller IP: %s" % controllerRestIP
 
-# def topology:
-# Switches fields:
-#     inetAddress
-#     connectedSince
-#     switchDPID
-# To get individual values, here is the command:
-# inetAddress: print switches[0].get('inetAddress') 
-
 # Get the list of switches with their dpid
-# command = "curl -s http://%s/wm/core/controller/switches/json" % (controllerRestIP)
-# result = os.popen(command).read()
-# switches = json.loads(result)
-# print the datapath id of switches
-# print "Number of switches: %d" % len(switches)
-# for i in range(len(switches)):
-#   print switches[i]['switchDPID']
-
-# Get number of hosts connected to the switch
-# for i in range(len(switches)):
-#   command = "curl -s http://%s/wm/device/?dpid=%s" % (controllerRestIP, switches[i]['switchDPID'])
-#   result = os.popen(command).read()
-#   deviceInfo = json.loads(result)
-#   print deviceInfo
-  # print "Number of hosts: %d" % (len(deviceInfo))
+command = "curl -s http://%s/wm/core/controller/switches/json" % (controllerRestIP)
+result = os.popen(command).read()
+switches = json.loads(result)
+print "Number of switches connected = %d" % len(switches) 
+port_stat = {}
 
 # Get all the static flows for the switch:
 # for i in range(len(switches)):
@@ -86,17 +68,38 @@ print "Controller IP: %s" % controllerRestIP
 # result = os.popen(command).read()
 # print result
 
+def parse_flows(flows):
+	print flows
+	parsedResult = json.loads(flows)
+	flow_stat = parsedResult['flows']
+	for item in flow_stat:
+		match = item['match']
+		actions = item['instructions']['instruction_apply_actions']['actions']
+		print type(actions)
+	
+def parse_ports(ports):
+	parsedResult = json.loads(ports)
+	port_stat = parsedResult['port_reply'][0]['port']
+	for item in port_stat:
+		port_number = item['port_number']
+		rx_packets = item['receive_packets']
+		rx_bytes = item['receive_bytes']
+		tx_packets = item['transmit_packets']
+		tx_bytes = item['transmit_bytes']
+		print port_number
 
-# Get all the flows for the switch:
+def rest_call(command):
+	return os.popen(command).read()
+
+# Get all the flows for the switches:
 while True:
-  # for i in range(len(switches)):
-  command = "curl -s http://%s/wm/core/switch/all/flow/json" % (controllerRestIP) 
-# command = "curl -s http://%s/wm/staticflowpusher/list/%s/json" % (controllerRestIP, switches[i]['switchDPID']) 
-  flows = os.popen(command).read()
-  print flows
-
-# Get tables present in storage
-# command = "curl -s http://%s/wm/core/storage/tables/json" % (controllerRestIP) 
-# flows = os.popen(command).read()
-# print flows
-
+	start_time = time.time()
+	for i in range(len(switches)):
+		flow_command = "curl -s http://%s/wm/core/switch/%s/flow/json" % (controllerRestIP, switches[i]['switchDPID']) 
+		flows = rest_call(flow_command)
+		port_command = "curl -s http://%s/wm/core/switch/%s/port/json" % (controllerRestIP, switches[i]['switchDPID']) 
+		ports = rest_call(port_command)
+		# print "Switch %s" % switches[i]['switchDPID']
+		parse_flows(flows)
+		parse_ports(ports)
+	print("--- %s seconds ---" % (time.time() - start_time))
