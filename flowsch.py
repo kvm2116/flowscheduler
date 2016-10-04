@@ -36,6 +36,7 @@ print "Controller IP: %s" % controllerRestIP
 command = "curl -s http://%s/wm/core/controller/switches/json" % (controllerRestIP)
 result = os.popen(command).read()
 switches = json.loads(result)
+print switches
 print "Number of switches connected = %d" % len(switches) 
 port_stats = {}
 flow_stats = {}
@@ -73,7 +74,7 @@ def parse_flows(flows, dpid):
 	parsedResult = json.loads(flows)
 	flow_stats = parsedResult['flows']
 	for item in flow_stats:
-		if item['table_id'] == 200:
+		if item['table_id'] == "0xc8" :				# table id = 200
 			match = item['match']
 			actions = item['instructions']['instruction_apply_actions']['actions']
 
