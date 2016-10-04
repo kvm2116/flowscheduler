@@ -78,12 +78,39 @@ def parse_flows(flows, dpid):
 			match = item['match']
 			actions = item['instructions']['instruction_apply_actions']['actions']
 
+def add_port_stat(dpid, port_number, rx_packets, rx_bytes, tx_packets, tx_bytes, rx_packets_diff, rx_bytes_diff, tx_packets_diff, tx_bytes_diff):
+	port_stats[dpid][port_number] = {'rx_packets' : rx_packets, 'rx_bytes' : rx_bytes, 
+										'tx_packets' : tx_packets, 'tx_bytes' : tx_bytes,
+										'rx_packets_diff': rx_packets_diff, 'rx_bytes_diff' : rx_bytes_diff,
+										'tx_packets_diff': tx_packets_diff, 'tx_bytes_diff' : tx_bytes_diff}
+
+
 def parse_ports(ports, dpid):
 	parsedResult = json.loads(ports)
 	stats = parsedResult['port_reply'][0]['port']
-	port_stats[dpid] = {}
 	for item in stats:
-		port_stats[dpid][item['port_number']] = {'rx_packets' : item['receive_packets'], 'rx_bytes' : item['receive_bytes'], 'tx_packets' : item['transmit_packets'], 'tx_bytes' : item['transmit_bytes']}
+		if dpid in port_stats:
+			port_number = long(item['port_number'])
+			if port_number in port_stats[dpid]:
+				rx_packets_diff = long(item['receive_packets']) - port_stats[dpid][port_number]['rx_packets']
+				rx_bytes_diff = long(item['receive_bytes']) - port_stats[dpid][port_number]['rx_bytes']
+				tx_packets_diff = long(item['transmit_packets']) - port_stats[dpid][port_number]['tx_packets']
+				tx_bytes_diff = long(item['transmit_bytes']) - port_stats[dpid][port_number]['tx_bytes']
+
+				add_port_stat(dpid, port_number, long(item['receive_packets']), long(item['receive_bytes']), 		# update entry
+								long(item['transmit_packets']), long(item['transmit_bytes']), 
+								rx_packets_diff, rx_bytes_diff, tx_packets_diff, tx_bytes_diff)
+			else:
+				add_port_stat(dpid, port_number, long(item['receive_packets']), long(item['receive_bytes']), 		# add entry for new port number
+								long(item['transmit_packets']), long(item['transmit_bytes']), 
+								0, 0, 0, 0)
+		else:																										# add entry for new switch
+			port_stats[dpid] = {}
+			port_number = long(item['port_number'])
+			add_port_stat(dpid, port_number, long(item['receive_packets']), long(item['receive_bytes']), 
+								long(item['transmit_packets']), long(item['transmit_bytes']), 
+								0, 0, 0, 0)
+	print port_stats
 
 def rest_call(command):
 	return os.popen(command).read()
