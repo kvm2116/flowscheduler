@@ -37,11 +37,14 @@ num_groups = int(args.num_groups)
 command = "curl -s http://%s/wm/core/controller/switches/json" % (controllerRestIP)
 result = os.popen(command).read()
 switches = json.loads(result)
+dpid = switches[0]['switchDPID']
 
 # create stats and group variables
 port_stats = {}
 flow_stats = {}
 flow_groups = {}
+output_ports = [47,49]		# TODO update the list of output ports for each switch
+path_assignment = {}
 
 """
 Get the group bandwidth usage
@@ -64,6 +67,34 @@ def get_group_bw_usage():
 		counts = flow_stats[flow]
 		groups[group_id] += counts['byte_diff']
 		flow_groups[(flow[0], flow[1])] = groups
+
+def get_port_usages():
+	port_congestion = {}
+	for port in output_ports:
+		port_congestion[port] = port_stats[dpid][port]['tx_bytes_diff']
+	return port_congestion
+
+"""
+For each src-dst ip tuple, there is a set of paths.
+Scheduler has to assign paths to each of the groups based on path utilization
+"""
+def scheduler():
+	for ip_tuple in flow_groups:
+		groups = flow_groups[ip_tuple]
+		sorted_groups = sorted(groups.items(), key=lambda x: x[1], reverse=True)
+		groups_path = {}
+		port_congestion = get_port_usages()
+		for group_id, byte_count in sorted_groups:
+			min_value = 99999999999999999999 
+			min_port = -1
+			for port in output_ports:
+				if port_congestion[port] < min_value:
+					min_value = port_congestion[port]
+					min_port = port
+			groups_path[group_id] = min_port
+			port_congestion[min_port] += byte_count
+		path_assignment[ip_tuple] = groups_path
+	return path_assignment
 
 """
 flow_stats data structure:
@@ -140,4 +171,6 @@ while True:
 		parse_flows(flows, switches[i]['switchDPID'])
 		get_group_bw_usage()
 		parse_ports(ports, switches[i]['switchDPID'])
+		path_assignment = scheduler()
+		print path_assignment
 	print("--- %s seconds ---" % (time.time() - start_time))
