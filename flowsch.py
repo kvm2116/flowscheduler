@@ -10,7 +10,7 @@ This information can be verified by visiting the website:
 The code also gives example of how to add the forwarding rules in the switches
 
 Syntax:
-   python flowsch.py {IP:REST_PORT}
+   python flowsch.py {IP:REST_PORT} {num_groups}
 
 @author Kunal Mahajan, mkunal@cs.columbia.edu
 PhD Candidate in CS
@@ -27,56 +27,70 @@ import time
 
 parser = argparse.ArgumentParser(description='Flow Scheduler')
 parser.add_argument("controllerRestIP", action='store', default='localhost:8080', help='controller IP:RESTport, e.g., localhost:8080 or A.B.C.D:8080')
+parser.add_argument("num_groups", action='store', default='2', help='number of groups, e.g., 2 or 10')
 args = parser.parse_args()
 
 controllerRestIP = args.controllerRestIP # the ip address along with the port number
-print "Controller IP: %s" % controllerRestIP
+num_groups = int(args.num_groups)
 
 # Get the list of switches with their dpid
 command = "curl -s http://%s/wm/core/controller/switches/json" % (controllerRestIP)
 result = os.popen(command).read()
 switches = json.loads(result)
-print switches
-print "Number of switches connected = %d" % len(switches) 
+
+# create stats and group variables
 port_stats = {}
 flow_stats = {}
+flow_groups = {}
 
-# Get all the static flows for the switch:
-# for i in range(len(switches)):
-#   command = "curl -s http://%s/wm/staticflowpusher/list/%s/json" % (controllerRestIP, switches[i]['switchDPID']) 
-#   flows = os.popen(command).read()
-#   print flows
+"""
+Get the group bandwidth usage
+key is ipv4_src and ipv4_dst
+value is dictionary of groups
+for dictionary of groups: key is group number, value is bandwidth usage
+"""
+def get_group_bw_usage():
+	for flow in flow_stats:
+		# initialize the groups for this src-dst ip tuple if it does not exist
+		if (flow[0], flow[1]) not in flow_groups:
+			groups = {}
+			for i in range(0,num_groups):
+				groups[i] = 0
+			flow_groups[(flow[0], flow[1])] = groups
+		groups = flow_groups[(flow[0], flow[1])]
+		# compute group_id for this flow
+		group_id = (int(flow[2]) ^ int(flow[3])) % num_groups
+		# add byte_count to this group_id usage
+		counts = flow_stats[flow]
+		groups[group_id] += counts['byte_diff']
+		flow_groups[(flow[0], flow[1])] = groups
 
-# switch_dpid = "04:55:2c:23:3a:3f:37:60"
-# # Add a static flow
-# command = "curl -X POST -d '{\"switch\": \"04:55:2c:23:3a:3f:37:60\", \"name\":\"flow-mod-8\", \"table\":\"200\"," + \
-#           "\"cookie\":\"0\", \"priority\":\"2\", \"in_port\":\"10\",\"active\":\"true\", \"actions\":\"output=56\"}'" + \
-#           " http://128.104.222.57:8080/wm/staticflowpusher/json"
-# result = os.popen(command).read()
-# print result
-
-# eth_dst = "90:e2:ba:b3:ba:44"
-# command = "curl -X POST -d '{\"switch\":\"04:55:2c:23:3a:3f:37:60\", \"name\":\"flow-mod-1\", \"table\":\"100\"," + \
-#           "\"cookie\":\"0\", \"priority\":\"32768\", \"eth_dst\":\"90:e2:ba:b3:ba:44\", \"eth_type\":\"0x0800\","+ \
-#           "\"ipv4_dst\":\"10.10.1.2\", \"active\":\"true\", \"actions\":\"output=13\"}'" + \
-#           " http://128.104.223.10:8080/wm/staticflowpusher/json"
-# result = os.popen(command).read()
-# print result
-
-# command = "curl -X POST -d '{\"switch\": \"04:69:2c:23:3a:3f:42:69\", \"name\":\"flow-mod-9\", \"table\":\"200\"," + \
-#           "\"cookie\":\"0\", \"priority\":\"3\", \"ipv4_dst\":\"10.10.1.1\", \"ipv4_src\":\"10.10.1.2\", \"eth_type\":\"0x0800\"," + \
-#           "\"tcp_src\":\"5010\", \"tcp_dst\":\"5009\", \"active\":\"true\", \"actions\":\"output=56\"}'" + \
-#           " http://128.104.222.34:8080/wm/staticflowpusher/json"
-# result = os.popen(command).read()
-# print result
-
+"""
+flow_stats data structure:
+key: tuple of (ipv4_src, ipv4_dst, tcp_src, tcp_dst)
+value: dictionary, where key is (pkt_count, pkt_diff, byte_count, byte_diff)
+"""
 def parse_flows(flows, dpid):
 	parsedResult = json.loads(flows)
-	flow_stats = parsedResult['flows']
-	for item in flow_stats:
+	flow_results = parsedResult['flows']
+	for item in flow_results:
+		match = item['match']
 		if item['table_id'] == "0xc8" :				# table id = 200
-			match = item['match']
-			actions = item['instructions']['instruction_apply_actions']['actions']
+			if (match['ipv4_src'], match['ipv4_dst'], match['tcp_src'], match['tcp_dst']) in flow_stats:
+				stat = flow_stats[(match['ipv4_src'], match['ipv4_dst'], match['tcp_src'], match['tcp_dst'])]
+				flow_stats[(match['ipv4_src'], match['ipv4_dst'], match['tcp_src'], match['tcp_dst'])] = {'pkt_count' : long(item['packet_count']),
+															'pkt_diff' : long(item['packet_count']) - stat['pkt_count'], 
+															'byte_count' : long(item['byte_count']), 
+															'byte_diff': long(item['byte_count']) - stat['byte_count']}
+			else:
+				flow_stats[(match['ipv4_src'], match['ipv4_dst'], match['tcp_src'], match['tcp_dst'])] = {'pkt_count' : long(item['packet_count']),
+															'pkt_diff' : 0, 'byte_count' : long(item['byte_count']), 
+															'byte_diff': 0}
+			# match = item['match']
+			# actions = item['instructions']['instruction_apply_actions']['actions']
+			# actions = actions.split("=")
+			# port_num = actions[1]
+	# print flow_stats
 
 def add_port_stat(dpid, port_number, rx_packets, rx_bytes, tx_packets, tx_bytes, rx_packets_diff, rx_bytes_diff, tx_packets_diff, tx_bytes_diff):
 	port_stats[dpid][port_number] = {'rx_packets' : rx_packets, 'rx_bytes' : rx_bytes, 
@@ -84,7 +98,7 @@ def add_port_stat(dpid, port_number, rx_packets, rx_bytes, tx_packets, tx_bytes,
 										'rx_packets_diff': rx_packets_diff, 'rx_bytes_diff' : rx_bytes_diff,
 										'tx_packets_diff': tx_packets_diff, 'tx_bytes_diff' : tx_bytes_diff}
 
-
+# Calculation does not account for overflows
 def parse_ports(ports, dpid):
 	parsedResult = json.loads(ports)
 	stats = parsedResult['port_reply'][0]['port']
@@ -110,7 +124,7 @@ def parse_ports(ports, dpid):
 			add_port_stat(dpid, port_number, long(item['receive_packets']), long(item['receive_bytes']), 
 								long(item['transmit_packets']), long(item['transmit_bytes']), 
 								0, 0, 0, 0)
-	print port_stats
+	# print port_stats
 
 def rest_call(command):
 	return os.popen(command).read()
@@ -123,7 +137,7 @@ while True:
 		flows = rest_call(flow_command)
 		port_command = "curl -s http://%s/wm/core/switch/%s/port/json" % (controllerRestIP, switches[i]['switchDPID']) 
 		ports = rest_call(port_command)
-		# print "Switch %s" % switches[i]['switchDPID']
 		parse_flows(flows, switches[i]['switchDPID'])
+		get_group_bw_usage()
 		parse_ports(ports, switches[i]['switchDPID'])
 	print("--- %s seconds ---" % (time.time() - start_time))
