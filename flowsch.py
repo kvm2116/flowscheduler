@@ -17,6 +17,7 @@ PhD Candidate in CS
 Columbia University
 """
 
+import httplib
 import os
 import sys
 import subprocess
@@ -30,8 +31,40 @@ parser.add_argument("controllerRestIP", action='store', default='localhost:8080'
 parser.add_argument("num_groups", action='store', default='2', help='number of groups, e.g., 2 or 10')
 args = parser.parse_args()
 
+
 controllerRestIP = args.controllerRestIP # the ip address along with the port number
+controllerIP, port = controllerRestIP.split(":")
 num_groups = int(args.num_groups)
+
+
+class Forwarding(object):
+  
+    def __init__(self, server):
+        self.server = server
+  
+    def get(self, data):
+        ret = self.rest_call({}, 'GET')
+        return json.loads(ret[2])
+  
+    def set(self, data):
+        ret = self.rest_call(data, 'POST')
+        return ret[0] == 204
+  
+    def rest_call(self, data, action):
+        path = '/wm/forwarding/json'
+        headers = {
+            'Content-type': 'application/json',
+            'Accept': 'application/json',
+            }
+        body = json.dumps(data)
+        conn = httplib.HTTPConnection(self.server, 8080)
+        conn.request(action, path, body, headers)
+        response = conn.getresponse()
+        ret = (response.status, response.reason, response.read())
+        # print ret
+        conn.close()
+        return ret
+
 
 # Get the list of switches with their dpid
 command = "curl -s http://%s/wm/core/controller/switches/json" % (controllerRestIP)
@@ -214,6 +247,7 @@ def convert_to_json(path_assignment):
 	return json.dumps(str_path_assignment)
 
 create_iptuple_outputport_comb()
+pusher = Forwarding(controllerIP)
 # Get all the flows for the switches:
 while True:
 	start_time = time.time()
@@ -228,5 +262,5 @@ while True:
 		path_assignment = scheduler()
 		print path_assignment
 		json_path_assignment = convert_to_json(path_assignment)
-		# print json_path_assignment
+		pusher.set(json_path_assignment)
 	print("--- %s seconds ---" % (time.time() - start_time))
