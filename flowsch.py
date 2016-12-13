@@ -43,8 +43,50 @@ dpid = switches[0]['switchDPID']
 port_stats = {}
 flow_stats = {}
 flow_groups = {}
-output_ports = [47,49]		# TODO update the list of output ports for each switch
+spine_ports = [1,2]   			# UPDATE THESE TODO
 path_assignment = {}
+iptuple_port_dict = {}
+all_ports = []
+
+rack_attachments = {0: 
+						[
+							('10.10.1.1', 43),
+							('10.10.1.2', 29),
+							('10.10.1.3', 53)
+						], 
+					1:
+						[
+
+						]
+					}
+
+"""
+Create the list of all ports associated with the switch
+"""
+def get_all_ports():
+	for item in spine_ports:
+		all_ports.append(item)
+	for (ip, port) in rack_attachments[0]:
+		all_ports.append(port)
+
+
+"""
+Create the IP tuple and possible output ports dictionary for Rack 0 switch
+"""
+def create_iptuple_outputport_comb():
+	# within rack 0 combinations
+	for (src_ip, src_port) in rack_attachments[0]:
+		for (dst_ip, dst_port) in rack_attachments[0]:
+			if src_ip == dst_ip:
+				continue
+			iptuple_port_dict[(src_ip, dst_ip)] = [dst_port]
+	# rack 0 to rack 1 combinations
+	for (src_ip, src_port) in rack_attachments[0]:
+		for (dst_ip, dst_port) in rack_attachments[1]:
+			if src_ip == dst_ip:
+				continue
+			iptuple_port_dict[(src_ip, dst_ip)] = spine_ports
+
 
 """
 Get the group bandwidth usage
@@ -70,7 +112,7 @@ def get_group_bw_usage():
 
 def get_port_usages():
 	port_congestion = {}
-	for port in output_ports:
+	for port in all_ports:
 		port_congestion[port] = port_stats[dpid][port]['tx_bytes_diff']
 	return port_congestion
 
@@ -87,7 +129,9 @@ def scheduler():
 		for group_id, byte_count in sorted_groups:
 			min_value = 99999999999999999999 
 			min_port = -1
-			for port in output_ports:
+			for port in iptuple_port_dict[ip_tuple]:
+				if port not in port_congestion:
+					port_congestion[port] = 0
 				if port_congestion[port] < min_value:
 					min_value = port_congestion[port]
 					min_port = port
@@ -106,7 +150,9 @@ def parse_flows(flows, dpid):
 	flow_results = parsedResult['flows']
 	for item in flow_results:
 		match = item['match']
-		if item['table_id'] == "0xc8" :				# table id = 200
+		if 'ipv4_src' not in match or 'tcp_src' not in match:
+			continue
+		if item['table_id'] == "0xc8":				# table id = 200
 			if (match['ipv4_src'], match['ipv4_dst'], match['tcp_src'], match['tcp_dst']) in flow_stats:
 				stat = flow_stats[(match['ipv4_src'], match['ipv4_dst'], match['tcp_src'], match['tcp_dst'])]
 				flow_stats[(match['ipv4_src'], match['ipv4_dst'], match['tcp_src'], match['tcp_dst'])] = {'pkt_count' : long(item['packet_count']),
@@ -160,6 +206,14 @@ def parse_ports(ports, dpid):
 def rest_call(command):
 	return os.popen(command).read()
 
+def convert_to_json(path_assignment):
+	# convert keys in path_assignment to strings
+	str_path_assignment = {}
+	for item in path_assignment:
+		str_path_assignment[str(item)] = path_assignment[item]
+	return json.dumps(str_path_assignment)
+
+create_iptuple_outputport_comb()
 # Get all the flows for the switches:
 while True:
 	start_time = time.time()
@@ -173,4 +227,6 @@ while True:
 		parse_ports(ports, switches[i]['switchDPID'])
 		path_assignment = scheduler()
 		print path_assignment
+		json_path_assignment = convert_to_json(path_assignment)
+		# print json_path_assignment
 	print("--- %s seconds ---" % (time.time() - start_time))
