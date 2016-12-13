@@ -36,23 +36,24 @@ print "Controller IP: %s" % controllerRestIP
 command = "curl -s http://%s/wm/core/controller/switches/json" % (controllerRestIP)
 result = os.popen(command).read()
 switches = json.loads(result)
+print switches
 print "Number of switches connected = %d" % len(switches) 
 
 def addflow(dpid, ipv4_src, ipv4_dst, tcp_src, tcp_dst, outport):
 	command = "curl -X POST -d '{\"switch\": \"%s\", \"name\":\"flow-mod-9\", \"table\":\"200\"," + \
           "\"cookie\":\"0\", \"priority\":\"3\", \"ipv4_src\":\"%s\", \"ipv4_dst\":\"%s\", \"eth_type\":\"0x0800\"," + \
           "\"tcp_src\":\"%s\", \"tcp_dst\":\"%s\", \"ip_proto\":\"0x06\", \"active\":\"true\", \"actions\":\"output=%s\"}'" + \
-          " http://128.104.222.94:8080/wm/staticflowpusher/json" % (dpid, ipv4_src, ipv4_dst, tcp_src, tcp_dst, outport)
+          " http://128.104.222.74:8080/wm/staticflowpusher/json" % (dpid, ipv4_src, ipv4_dst, tcp_src, tcp_dst, outport)
 	result = os.popen(command).read()
 	print result
 
 
-command = "curl -X POST -d '{\"switch\": \"04:4d:2c:23:3a:3f:2a:93\", \"name\":\"flow-mod-9\", \"table\":\"200\"," + \
-          "\"cookie\":\"0\", \"priority\":\"3\", \"ipv4_src\":\"10.10.1.1\", \"ipv4_dst\":\"10.10.1.2\", \"eth_type\":\"0x0800\"," + \
-          "\"tcp_src\":\"5001\", \"tcp_dst\":\"5002\", \"ip_proto\":\"0x06\", \"active\":\"true\", \"actions\":\"output=47\"}'" + \
-          " http://128.104.222.94:8080/wm/staticflowpusher/json"
-result = os.popen(command).read()
-print result
+# command = "curl -X POST -d '{\"switch\": \"04:4d:2c:23:3a:3f:2a:93\", \"name\":\"flow-mod-9\", \"table\":\"200\"," + \
+#           "\"cookie\":\"0\", \"priority\":\"3\", \"ipv4_src\":\"10.10.1.1\", \"ipv4_dst\":\"10.10.1.2\", \"eth_type\":\"0x0800\"," + \
+#           "\"tcp_src\":\"5001\", \"tcp_dst\":\"5002\", \"ip_proto\":\"0x06\", \"active\":\"true\", \"actions\":\"output=47\"}'" + \
+#           " http://128.104.222.94:8080/wm/staticflowpusher/json"
+# result = os.popen(command).read()
+# print result
 # addflow("04:4d:2c:23:3a:3f:2a:93", "10.10.1.1", "10.10.1.2", "5001", "5002", "47")
 
 
@@ -62,13 +63,40 @@ print result
 #   flows = os.popen(command).read()
 #   print flows
 
-# switch_dpid = "04:55:2c:23:3a:3f:37:60"
-# # Add a static flow
-# command = "curl -X POST -d '{\"switch\": \"04:55:2c:23:3a:3f:37:60\", \"name\":\"flow-mod-8\", \"table\":\"200\"," + \
-#           "\"cookie\":\"0\", \"priority\":\"2\", \"in_port\":\"10\",\"active\":\"true\", \"actions\":\"output=56\"}'" + \
-#           " http://128.104.222.57:8080/wm/staticflowpusher/json"
-# result = os.popen(command).read()
-# print result
+switch_dpid = "04:55:2c:23:3a:3f:0e:c4"
+def getflows():
+	allflows_command = "curl -s http://%s/wm/core/switch/all/flow/json" % (controllerRestIP)
+	result = os.popen(allflows_command).read()
+	printflows(result, True)
+
+"""
+isAll: true, print all the results 
+		false, flows in table 200
+"""
+def printflows(result,isAll):
+	parsedResult = json.loads(result)
+	flow_results = parsedResult[switch_dpid]['flows']
+	if isAll:
+		for item in flow_results:
+			print item
+	else:
+		for item in flow_results:
+			if item['table_id'] == "0xc8" :	
+				print item
+	print("--- --- --- --- --- --- --- --- ---")
+
+# def deleteFlow():
+# 	delete_command = "curl -X DELETE -d '{"name":"flow-mod-1"}' http://<controller_ip>:8080/wm/core/switch/json"
+
+# Add output to controller flow in table 200
+command = "curl -X POST -d '{\"switch\": \"04:55:2c:23:3a:3f:0e:c4\", \"name\":\"flow-mod-8\", \"table\":\"200\"," + \
+          "\"cookie\":\"0\", \"priority\":\"0\", \"active\":\"true\", \"actions\":\"output=controller\"}'" + \
+          " http://128.104.222.74:8080/wm/staticflowpusher/json"
+result = os.popen(command).read()
+print result
+while(True):
+	getflows()
+
 
 # eth_dst = "90:e2:ba:b3:ba:44"
 # command = "curl -X POST -d '{\"switch\":\"04:55:2c:23:3a:3f:37:60\", \"name\":\"flow-mod-1\", \"table\":\"100\"," + \
