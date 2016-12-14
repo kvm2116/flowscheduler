@@ -76,7 +76,7 @@ dpid = switches[0]['switchDPID']
 port_stats = {}
 flow_stats = {}
 flow_groups = {}
-spine_ports = [1,2]   			# UPDATE THESE TODO
+spine_ports = []   			# UPDATE THESE TODO
 path_assignment = {}
 iptuple_port_dict = {}
 all_ports = []
@@ -260,7 +260,9 @@ while True:
 		get_group_bw_usage()
 		parse_ports(ports, switches[i]['switchDPID'])
 		path_assignment = scheduler()
-		print path_assignment
-		json_path_assignment = convert_to_json(path_assignment)
-		pusher.set(json_path_assignment)
+		if len(path_assignment.keys()) != 0:
+			# print iptuple_port_dict
+			json_path_assignment = convert_to_json(path_assignment)
+			print json_path_assignment
+			pusher.set(json_path_assignment)
 	print("--- %s seconds ---" % (time.time() - start_time))
