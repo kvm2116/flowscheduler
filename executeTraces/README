@@ -1,0 +1,59 @@
+FlowSim README
+--------------
+
+FlowSim.py:
+
+Requires iPerf; see commented lines for using iPerf3 (note, iPerf3 does not support multiple concurrent clients).  Reads an input file of flows with start times, and executes the flows at the specified start time using iPerf. The input file is expected to be in the format: 
+
+
+	time,src_ip,src_port,dst_ip,dst_port,size
+	t_1,sip_1,sp_1,dip_1,dp_2,s1
+	t_2,sip_2,sp_2,dip_2,dp_2,s_2
+	...
+	t_n,sip_n,sp_n,dip_n,dp_n,s_n
+
+This program will also initiate iPerf servers listening on ports 11000-111999 prior to sending any outgoing flows. These servers will be terminated three minutes after all outgoing flows have completed.  The flow_id, duration, and bandwidth as reported by iPerf will be written to an output file for each outgoing flow.  Lines in the output file will be in the format:
+
+	flow_id,duration(s),bandwidth(Kbps)
+
+FlowSim.py can be executed as follows:
+
+	python FlowSim.py <input_file> <output_file>
+
+For example, running:
+
+	python FlowSim.py flows.csv flow_stats.csv
+
+Will read input from the file "flows.csv" and write output to the file "flow_stats-<date/time>.csv", where <date/time> corresponds to the date and time when the FlowSim.py began execution.  
+
+To support large number of concurrent flows, the maximum number of open files descriptors will likely need to be increased. 
+
+	To see the maximum number of open file descriptors on a linux machine, try:
+
+	cat /proc/sys/fs/file-max
+
+	To increase maximum number of file descriptors to 10000, try:
+
+	su -
+	sysctl -w fs.file-max=100000
+
+	To have limit remain at 10000 after reboot, edit /etc/sysctl.conf and append the line:
+	fs.file-max = 100000
+
+
+FlowSimCron.py: 
+
+Creates cron jobs to schedule execution of FlowSim.py.  Used so that a group of machines will begin executing FlowSim.py at the same time, assuming the system clocks are sychronized.  Can also be used so that experiments are repeated multiple times.  Can be executed as follows: 
+
+	python FlowSimCron.py <start_time> <path_to_FlowSim.py> <input_filepath> <output_filepath> <num_executions> <interval_time>
+
+For example, running the following: 
+
+	python FlowSimCron.py 14:00 /home/FlowSim.py /home/input_flows.csv /home/output.csv 4 10 
+
+Will create 4 cron jobs for executing /home/FlowSim.py with the input file /home/input_flows.csv and the output file format /home/output.csv.  The jobs will be entered at ten minute intervals; the first job will be scheduled for 2:00pm, the second for 2:10pm, the third job for 2:20 pm, and the 4th job for 2:30pm.  
+
+Cron jobs will need to be deleted manually after completion of an experiment (although they will only executed once per year, as entered by this script).  
+
+
+
