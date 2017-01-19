@@ -73,13 +73,20 @@ switches = json.loads(result)
 dpid = switches[0]['switchDPID']
 
 # create stats and group variables
-port_stats = {}
-flow_stats = {}
-flow_groups = {}
-spine_ports = [1, 5, 22, 37, 65, 69]   			# UPDATE THESE TODO
+switch_port_stats = {}
+switch_flow_stats = {}
+switch_flow_groups = {}
 path_assignment = {}
-iptuple_port_dict = {}
-all_ports = []
+leaf_switches = ['00:65:5c:8a:38:3e:cd:28', '00:65:2c:23:3a:3e:ed:a9']
+switch_ports = {'00:65:5c:8a:38:3e:cd:28':						# LEAF 0
+					[1,5,33,37,65,69],
+				'00:65:2c:23:3a:3e:ed:a9':						# LEAF 1
+					[1,5,33,37,65,69],
+				'00:65:bc:ea:fa:b3:5e:32':						# SPINE 0
+					[],
+				'00:65:bc:ea:fa:6c:69:1d':						# SPINE 1
+					[]
+				} # dpid, ports to spine/leaf
 
 rack_attachments = {0: 
 						[
@@ -121,33 +128,18 @@ rack_attachments = {0:
 						]
 					}
 
-"""
-Create the list of all ports associated with the switch
-"""
-def get_all_ports():
-	for item in spine_ports:
-		all_ports.append(item)
-	for (ip, port) in rack_attachments[0]:
-		all_ports.append(port)
 
+def initializeGroups(leaf_switches):
+	for dpid in leaf_switches:
+		groups = {}
+		for i in range(0,num_groups):
+			groups[i] = 0
+		switch_flow_groups[dpid] = groups
 
-"""
-Create the IP tuple and possible output ports dictionary for Rack 0 switch
-"""
-def create_iptuple_outputport_comb():
-	# within rack 0 combinations
-	for (src_ip, src_port) in rack_attachments[0]:
-		for (dst_ip, dst_port) in rack_attachments[0]:
-			if src_ip == dst_ip:
-				continue
-			iptuple_port_dict[(src_ip, dst_ip)] = [dst_port]
-	# rack 0 to rack 1 combinations
-	for (src_ip, src_port) in rack_attachments[0]:
-		for (dst_ip, dst_port) in rack_attachments[1]:
-			if src_ip == dst_ip:
-				continue
-			iptuple_port_dict[(src_ip, dst_ip)] = spine_ports
-
+def IP2Int(ip):
+    o = map(int, ip.split('.'))
+    res = (16777216 * o[0]) + (65536 * o[1]) + (256 * o[2]) + o[3]
+    return res
 
 """
 Get the group bandwidth usage
@@ -156,25 +148,22 @@ value is dictionary of groups
 for dictionary of groups: key is group number, value is bandwidth usage
 """
 def get_group_bw_usage():
-	for flow in flow_stats:
-		# initialize the groups for this src-dst ip tuple if it does not exist
-		if (flow[0], flow[1]) not in flow_groups:
-			groups = {}
-			for i in range(0,num_groups):
-				groups[i] = 0
-			flow_groups[(flow[0], flow[1])] = groups
-		groups = flow_groups[(flow[0], flow[1])]
-		# compute group_id for this flow
-		group_id = (int(flow[2]) ^ int(flow[3])) % num_groups
-		# add byte_count to this group_id usage
-		counts = flow_stats[flow]
-		groups[group_id] += counts['byte_diff']
-		flow_groups[(flow[0], flow[1])] = groups
+	initializeGroups(leaf_switches)
+	for dpid in switch_flow_stats:
+		flow_stats = switch_flow_stats[dpid]
+		# print dpid 
+		# print flow_stats
+		groups = switch_flow_groups[dpid]
+		for flow in flow_stats:
+			flow_group_id = (IP2Int(flow[0]) ^ IP2Int(flow[1]) ^ int(flow[2]) ^ int(flow[3])) % num_groups
+			counts = switch_flow_stats[flow]
+			groups[flow_group_id] += counts['byte_diff']
+		switch_flow_groups[dpid] = groups
 
-def get_port_usages():
+def get_path_cost(dpid):
 	port_congestion = {}
-	for port in all_ports:
-		port_congestion[port] = port_stats[dpid][port]['tx_bytes_diff']
+	for port in switch_ports[dpid]:
+		port_congestion[port] = switch_port_stats[dpid][port]['tx_bytes_diff']
 	return port_congestion
 
 """
@@ -182,15 +171,16 @@ For each src-dst ip tuple, there is a set of paths.
 Scheduler has to assign paths to each of the groups based on path utilization
 """
 def scheduler():
-	for ip_tuple in flow_groups:
-		groups = flow_groups[ip_tuple]
+	for dpid in switch_flow_groups:
+		groups = switch_flow_groups[dpid]
 		sorted_groups = sorted(groups.items(), key=lambda x: x[1], reverse=True)
+
 		groups_path = {}
-		port_congestion = get_port_usages()
+		port_congestion = get_path_cost(dpid)
 		for group_id, byte_count in sorted_groups:
 			min_value = 99999999999999999999 
 			min_port = -1
-			for port in iptuple_port_dict[ip_tuple]:
+			for port in switch_ports[dpid]:
 				if port not in port_congestion:
 					port_congestion[port] = 0
 				if port_congestion[port] < min_value:
@@ -198,7 +188,7 @@ def scheduler():
 					min_port = port
 			groups_path[group_id] = min_port
 			port_congestion[min_port] += byte_count
-		path_assignment[ip_tuple] = groups_path
+		path_assignment[dpid] = groups_path
 	return path_assignment
 
 """
@@ -206,64 +196,76 @@ flow_stats data structure:
 key: tuple of (ipv4_src, ipv4_dst, tcp_src, tcp_dst)
 value: dictionary, where key is (pkt_count, pkt_diff, byte_count, byte_diff)
 """
-def parse_flows(flows, dpid):
+def parse_flows(flows):
+	flow_stats = {}
 	parsedResult = json.loads(flows)
-	flow_results = parsedResult['flows']
-	for item in flow_results:
-		match = item['match']
-		if 'ipv4_src' not in match or 'tcp_src' not in match:
-			continue
-		if item['table_id'] == "0xc8":				# table id = 200
-			if (match['ipv4_src'], match['ipv4_dst'], match['tcp_src'], match['tcp_dst']) in flow_stats:
-				stat = flow_stats[(match['ipv4_src'], match['ipv4_dst'], match['tcp_src'], match['tcp_dst'])]
-				flow_stats[(match['ipv4_src'], match['ipv4_dst'], match['tcp_src'], match['tcp_dst'])] = {'pkt_count' : long(item['packet_count']),
-															'pkt_diff' : long(item['packet_count']) - stat['pkt_count'], 
-															'byte_count' : long(item['byte_count']), 
-															'byte_diff': long(item['byte_count']) - stat['byte_count']}
-			else:
-				flow_stats[(match['ipv4_src'], match['ipv4_dst'], match['tcp_src'], match['tcp_dst'])] = {'pkt_count' : long(item['packet_count']),
-															'pkt_diff' : 0, 'byte_count' : long(item['byte_count']), 
-															'byte_diff': 0}
+	# print parsedResult
+	# print "\n\n"
+	for dpid in parsedResult:
+		# print dpid
+		flow_results = parsedResult[dpid]['flows']
+		for item in flow_results:
+			match = item['match']
+			# print match
+			if 'ipv4_src' not in match or 'ipv4_dst' not in match or 'tcp_src' not in match or 'tcp_dst' not in match:
+				continue
+			if item['table_id'] == "0xc8":				# table id = 200
+				if (match['ipv4_src'], match['ipv4_dst'], match['tcp_src'], match['tcp_dst']) in flow_stats:
+					stat = flow_stats[(match['ipv4_src'], match['ipv4_dst'], match['tcp_src'], match['tcp_dst'])]
+					flow_stats[(match['ipv4_src'], match['ipv4_dst'], match['tcp_src'], match['tcp_dst'])] = {'pkt_count' : long(item['packet_count']),
+																'pkt_diff' : long(item['packet_count']) - stat['pkt_count'], 
+																'byte_count' : long(item['byte_count']), 
+																'byte_diff': long(item['byte_count']) - stat['byte_count']}
+				else:
+					flow_stats[(match['ipv4_src'], match['ipv4_dst'], match['tcp_src'], match['tcp_dst'])] = {'pkt_count' : long(item['packet_count']),
+																'pkt_diff' : 0, 'byte_count' : long(item['byte_count']), 
+																'byte_diff': 0}
+		switch_flow_stats[dpid] = flow_stats
+		# print "\n\n"
 			# match = item['match']
 			# actions = item['instructions']['instruction_apply_actions']['actions']
 			# actions = actions.split("=")
 			# port_num = actions[1]
-	# print flow_stats
+	# print switch_flow_stats
 
 def add_port_stat(dpid, port_number, rx_packets, rx_bytes, tx_packets, tx_bytes, rx_packets_diff, rx_bytes_diff, tx_packets_diff, tx_bytes_diff):
-	port_stats[dpid][port_number] = {'rx_packets' : rx_packets, 'rx_bytes' : rx_bytes, 
+	switch_port_stats[dpid][port_number] = {'rx_packets' : rx_packets, 'rx_bytes' : rx_bytes, 
 										'tx_packets' : tx_packets, 'tx_bytes' : tx_bytes,
 										'rx_packets_diff': rx_packets_diff, 'rx_bytes_diff' : rx_bytes_diff,
 										'tx_packets_diff': tx_packets_diff, 'tx_bytes_diff' : tx_bytes_diff}
 
 # Calculation does not account for overflows
-def parse_ports(ports, dpid):
+def parse_ports(ports):
 	parsedResult = json.loads(ports)
-	stats = parsedResult['port_reply'][0]['port']
-	for item in stats:
-		if dpid in port_stats:
-			port_number = long(item['port_number'])
-			#print port_number
-			if port_number in port_stats[dpid]:
-				rx_packets_diff = long(item['receive_packets']) - port_stats[dpid][port_number]['rx_packets']
-				rx_bytes_diff = long(item['receive_bytes']) - port_stats[dpid][port_number]['rx_bytes']
-				tx_packets_diff = long(item['transmit_packets']) - port_stats[dpid][port_number]['tx_packets']
-				tx_bytes_diff = long(item['transmit_bytes']) - port_stats[dpid][port_number]['tx_bytes']
+	# print parsedResult
+	# print "\n\n"
+	for dpid in parsedResult:
+		# print dpid
+		stats = parsedResult[dpid]['port_reply'][0]['port']
 
-				add_port_stat(dpid, port_number, long(item['receive_packets']), long(item['receive_bytes']), 		# update entry
-								long(item['transmit_packets']), long(item['transmit_bytes']), 
-								rx_packets_diff, rx_bytes_diff, tx_packets_diff, tx_bytes_diff)
-			else:
-				add_port_stat(dpid, port_number, long(item['receive_packets']), long(item['receive_bytes']), 		# add entry for new port number
-								long(item['transmit_packets']), long(item['transmit_bytes']), 
-								0, 0, 0, 0)
-		else:																										# add entry for new switch
-			port_stats[dpid] = {}
-			port_number = long(item['port_number'])
-			add_port_stat(dpid, port_number, long(item['receive_packets']), long(item['receive_bytes']), 
-								long(item['transmit_packets']), long(item['transmit_bytes']), 
-								0, 0, 0, 0)
-	# print port_stats
+		for item in stats:
+			if dpid in switch_port_stats:
+				port_number = long(item['port_number'])
+				if port_number in switch_port_stats[dpid]:
+					rx_packets_diff = long(item['receive_packets']) - switch_port_stats[dpid][port_number]['rx_packets']
+					rx_bytes_diff = long(item['receive_bytes']) - switch_port_stats[dpid][port_number]['rx_bytes']
+					tx_packets_diff = long(item['transmit_packets']) - switch_port_stats[dpid][port_number]['tx_packets']
+					tx_bytes_diff = long(item['transmit_bytes']) - switch_port_stats[dpid][port_number]['tx_bytes']
+
+					add_port_stat(dpid, port_number, long(item['receive_packets']), long(item['receive_bytes']), 		# update entry
+									long(item['transmit_packets']), long(item['transmit_bytes']), 
+									rx_packets_diff, rx_bytes_diff, tx_packets_diff, tx_bytes_diff)
+				else:
+					add_port_stat(dpid, port_number, long(item['receive_packets']), long(item['receive_bytes']), 		# add entry for new port number
+									long(item['transmit_packets']), long(item['transmit_bytes']), 
+									0, 0, 0, 0)
+			else:																										# add entry for new switch
+				switch_port_stats[dpid] = {}
+				port_number = long(item['port_number'])
+				add_port_stat(dpid, port_number, long(item['receive_packets']), long(item['receive_bytes']), 
+									long(item['transmit_packets']), long(item['transmit_bytes']), 
+									0, 0, 0, 0)
+	# print switch_port_stats
 
 def rest_call(command):
 	return os.popen(command).read()
@@ -275,23 +277,22 @@ def convert_to_json(path_assignment):
 		str_path_assignment[str(item)] = path_assignment[item]
 	return json.dumps(str_path_assignment)
 
-create_iptuple_outputport_comb()
+
 pusher = Forwarding(controllerIP)
 # Get all the flows for the switches:
 while True:
 	start_time = time.time()
-	for i in range(len(switches)):
-		flow_command = "curl -s http://%s/wm/core/switch/%s/flow/json" % (controllerRestIP, switches[i]['switchDPID']) 
-		flows = rest_call(flow_command)
-		port_command = "curl -s http://%s/wm/core/switch/%s/port/json" % (controllerRestIP, switches[i]['switchDPID']) 
-		ports = rest_call(port_command)
-		parse_flows(flows, switches[i]['switchDPID'])
-		get_group_bw_usage()
-		parse_ports(ports, switches[i]['switchDPID'])
-		path_assignment = scheduler()
-		if len(path_assignment.keys()) != 0:
-			# print iptuple_port_dict
-			json_path_assignment = convert_to_json(path_assignment)
-			print json_path_assignment
-			pusher.set(json_path_assignment)
+	flow_command = "curl -s http://%s/wm/core/switch/all/flow/json" % (controllerRestIP) 
+	flows = rest_call(flow_command)
+	port_command = "curl -s http://%s/wm/core/switch/all/port/json" % (controllerRestIP) 
+	ports = rest_call(port_command)
+	parse_flows(flows)
+	get_group_bw_usage()
+	parse_ports(ports)
+	path_assignment = scheduler()
+	if len(path_assignment.keys()) != 0:
+		# print iptuple_port_dict
+		json_path_assignment = convert_to_json(path_assignment)
+		print json_path_assignment
+		pusher.set(json_path_assignment)
 	print("--- %s seconds ---" % (time.time() - start_time))

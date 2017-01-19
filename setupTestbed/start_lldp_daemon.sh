@@ -1,0 +1,38 @@
+#!/bin/bash
+# install iperf on each server	
+
+# From the setupTestbed/
+#./start_lldp_daemon.sh
+
+ssh mkunal@128.104.222.246 "sudo apt-get install lldpd; sudo /etc/init.d/lldpd start"
+ssh mkunal@128.104.222.247 "sudo apt-get install lldpd; sudo /etc/init.d/lldpd start"
+ssh mkunal@128.104.222.248 "sudo apt-get install lldpd; sudo /etc/init.d/lldpd start"
+ssh mkunal@128.104.222.249 "sudo apt-get install lldpd; sudo /etc/init.d/lldpd start"
+ssh mkunal@128.104.222.250 "sudo apt-get install lldpd; sudo /etc/init.d/lldpd start"
+ssh mkunal@128.104.222.251 "sudo apt-get install lldpd; sudo /etc/init.d/lldpd start"
+ssh mkunal@128.104.222.252 "sudo apt-get install lldpd; sudo /etc/init.d/lldpd start"
+ssh mkunal@128.104.222.253 "sudo apt-get install lldpd; sudo /etc/init.d/lldpd start"
+ssh mkunal@128.104.222.254 "sudo apt-get install lldpd; sudo /etc/init.d/lldpd start"
+ssh mkunal@128.104.222.255 "sudo apt-get install lldpd; sudo /etc/init.d/lldpd start"
+ssh mkunal@128.104.223.0 "sudo apt-get install lldpd; sudo /etc/init.d/lldpd start"
+ssh mkunal@128.104.223.1 "sudo apt-get install lldpd; sudo /etc/init.d/lldpd start"
+ssh mkunal@128.104.223.2 "sudo apt-get install lldpd; sudo /etc/init.d/lldpd start"
+ssh mkunal@128.104.223.3 "sudo apt-get install lldpd; sudo /etc/init.d/lldpd start"
+ssh mkunal@128.104.223.4 "sudo apt-get install lldpd; sudo /etc/init.d/lldpd start"
+ssh mkunal@128.104.223.5 "sudo apt-get install lldpd; sudo /etc/init.d/lldpd start"
+ssh mkunal@128.104.223.6 "sudo apt-get install lldpd; sudo /etc/init.d/lldpd start"
+ssh mkunal@128.104.223.7 "sudo apt-get install lldpd; sudo /etc/init.d/lldpd start"
+ssh mkunal@128.104.223.8 "sudo apt-get install lldpd; sudo /etc/init.d/lldpd start"
+ssh mkunal@128.104.223.9 "sudo apt-get install lldpd; sudo /etc/init.d/lldpd start"
+ssh mkunal@128.104.223.10 "sudo apt-get install lldpd; sudo /etc/init.d/lldpd start"
+ssh mkunal@128.104.223.11 "sudo apt-get install lldpd; sudo /etc/init.d/lldpd start"
+ssh mkunal@128.104.223.12 "sudo apt-get install lldpd; sudo /etc/init.d/lldpd start"
+ssh mkunal@128.104.223.13 "sudo apt-get install lldpd; sudo /etc/init.d/lldpd start"
+ssh mkunal@128.104.223.14 "sudo apt-get install lldpd; sudo /etc/init.d/lldpd start"
+ssh mkunal@128.104.223.15 "sudo apt-get install lldpd; sudo /etc/init.d/lldpd start"
+ssh mkunal@128.104.223.16 "sudo apt-get install lldpd; sudo /etc/init.d/lldpd start"
+ssh mkunal@128.104.223.17 "sudo apt-get install lldpd; sudo /etc/init.d/lldpd start"
+ssh mkunal@128.104.223.18 "sudo apt-get install lldpd; sudo /etc/init.d/lldpd start"
+ssh mkunal@128.104.223.19 "sudo apt-get install lldpd; sudo /etc/init.d/lldpd start"
+ssh mkunal@128.104.223.20 "sudo apt-get install lldpd; sudo /etc/init.d/lldpd start"
+ssh mkunal@128.104.223.21 "sudo apt-get install lldpd; sudo /etc/init.d/lldpd start"
